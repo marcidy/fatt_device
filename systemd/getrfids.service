@@ -1,0 +1,13 @@
+[Unit]
+Description=Retrieve RFID fobs
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONIOENCODING='utf-8'
+Environment=PYTHONUNBUFFERED='x'
+EnvironmentFile=/home/pi/amt_door/rfids
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/amt_door
+ExecStart=/home/pi/amt_door/venv/bin/python3 -u getrfids.py

@@ -1,0 +1,31 @@
+# Install system libraries using apt
+$ sudo apt-get update
+$ sudo apt-get install python3-pip python3-venv git rclone
+
+# Configure python with virtual environment
+$ python3 -m pip install --user --upgrade pip
+$ python3 -m venv venv 
+$ source venv/bin/activate
+$ pip install requests
+$ pip install RPi.GPIO
+
+If you have a customized wpa_supplicant.conf, add it to /etc/wpa_supplicant/ folder and restart
+
+# clone repo
+$ git clone <git location>
+
+# link systemd files to /etc/systemd/system
+$ sudo ln -s /home/pi/amt_door/systemd/amt_door.service /etc/systemd/system/amt_door.service
+$ sudo ln -s /home/pi/amt_door/systemd/getrfids.service /etc/systemd/system/getrfids.service
+$ sudo ln -s /home/pi/amt_door/systemd/getrfids.timer /etc/systemd/system/getrfids.timer
+
+# reload systemd services
+$ sudo systemctl daemon-reload
+
+# install systemd services
+$ sudo systemctl enable getrfids.timer
+$ sudo systemctl start getrfids.timer
+$ sudo systemctl enable amt_door.service
+$ sudo systemctl start amt_door.service
+
+# rfid shoulds be downloaded to ~/new_door/authorized.txt, check timestamp and file integrity

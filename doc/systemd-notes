@@ -1,0 +1,8 @@
+https://serverfault.com/questions/700862/do-systemd-unit-files-have-to-be-reloaded-when-modified
+
+systemctl daemon-reload
+
+
+https://coreos.com/os/docs/latest/using-environment-variables-in-systemd-units.html
+neet to set env var PYTHONUNBUFFERED to capture python output to stdout to /var/log/syslog
+
