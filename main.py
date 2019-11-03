@@ -1,5 +1,9 @@
-import RPi.GPIO as gpio
+from datetime import datetime
+import os
+import requests
 import time
+import RPi.GPIO as gpio
+
 from defaults import set_defaults
 
 bit_string = ''  # ID string of bits e.g. '1001'
@@ -12,6 +16,23 @@ lock_opened_time = 0  # when did we unlock the door?
 lock_open_delay_s = 1  # open delay in seconds
 
 DEBUG = True
+ASSET_ID = os.environ['AMTGC_ASSET_ID']
+GC_ASSET_TOKEN = os.environ['AMTGC_ASSET_TOKEN']
+REPORTING_URL = os.environ['AMTGC_REPORTING_URL']
+
+
+def report_attempt(rfid, result):
+    data = {
+        'access_point': ASSET_ID,
+        'activity_date': datetime.now(),
+        'credential': rfid,
+        'success': result,
+    }
+
+    headers = {'Authorization': "Token {}".format(GC_ASSET_TOKEN)}
+    resp = requests.post(REPORTING_URL, data, headers=headers)
+    return resp
+
 
 def reset_scan():
     global bit_string
@@ -37,7 +58,7 @@ def detect(pin):
 def unlock_door():
     global locked
     global lock_opened_time
-    
+
     gpio.output(31, gpio.HIGH)
     lock_opened_time = time.time()
     locked = False
@@ -77,10 +98,12 @@ if __name__ == "__main__":
         if (bit_detected and (time.time() - previous_bit_detected_time)*1000 > bit_string_time_out_ms):
             # Noise from load currently triggers spurious reads on wiegand inputs.
             # More than 30 bits of data on the interface indicates a decent attempted at an RFID.
-            if len(bit_string) > 30:   
+            if len(bit_string) > 30:
                 scanned_id = str(hex(int(bit_string[:-1], 2))).upper()[3:]
                 authorized = scanned_id in authorized_rfids
                 print("ID: {} Authorized: {}".format(scanned_id, authorized))
+                report_attempt(scanned_id, authorized)
+
             reset_scan()
 
         if authorized and locked is True:

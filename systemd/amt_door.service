@@ -6,6 +6,8 @@ After=network.target
 Type=simple
 Environment=PYTHONIOENCODING='utf-8'
 Environment=PYTHONUNBUFFERED='x'
+EnvironmentFile=/home/pi/amt_door/device.env
+EnvironmentFile=/home/pi/amt_door/fatt.env
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/amt_door
