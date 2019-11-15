@@ -31,6 +31,7 @@ def report_attempt(rfid, result):
 
     headers = {'Authorization': "Token {}".format(GC_ASSET_TOKEN)}
     resp = requests.post(REPORTING_URL, data, headers=headers)
+    print(resp.content)
     return resp
 
 
