@@ -1,10 +1,14 @@
 from datetime import datetime
 import os
-import requests
 import time
+import requests
 import RPi.GPIO as gpio
 
 from defaults import set_defaults
+from util import (
+    report_attempt,
+    load_whitelist,
+)
 
 bit_string = ''  # ID string of bits e.g. '1001'
 previous_bit_detected_time = 0  # Time of last bit detected
@@ -16,23 +20,6 @@ lock_opened_time = 0  # when did we unlock the door?
 lock_open_delay_s = 1  # open delay in seconds
 
 DEBUG = True
-ASSET_ID = os.environ['AMTGC_ASSET_ID']
-GC_ASSET_TOKEN = os.environ['AMTGC_ASSET_TOKEN']
-REPORTING_URL = os.environ['AMTGC_REPORTING_URL']
-
-
-def report_attempt(rfid, result):
-    data = {
-        'access_point': ASSET_ID,
-        'activity_date': datetime.now(),
-        'credential': rfid,
-        'success': result,
-    }
-
-    headers = {'Authorization': "Token {}".format(GC_ASSET_TOKEN)}
-    resp = requests.post(REPORTING_URL, data, headers=headers)
-    print(resp.content)
-    return resp
 
 
 def reset_scan():
@@ -92,8 +79,7 @@ if __name__ == "__main__":
     authorized = False
     scanned_id = ''
 
-    with open("authorized.txt", 'r') as f:
-        authorized_rfids = f.read().split("\n")
+    authorized_rfids = load_whitelist()
 
     while True:
         if (bit_detected and (time.time() - previous_bit_detected_time)*1000 > bit_string_time_out_ms):

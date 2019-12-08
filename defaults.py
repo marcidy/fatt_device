@@ -1,8 +1,9 @@
 ''' defaults.py: set defaults specific to the makerspace-auth board
 
-The Makerspace auth board does not contain hardware or software defaults.  This recociles it in a
-very simple way.   Pass the pins you intend to use to the set_defaults function as a a list and
-it will skip setting defaults for them.
+The Makerspace auth board does not contain hardware or software defaults.
+This recociles it in a very simple way.   Pass the pins you intend to use to
+the set_defaults function as a a list and it will skip setting defaults for
+them.
 '''
 
 import RPi.GPIO as gpio
@@ -26,6 +27,7 @@ DEFAULTS = {
     38: gpio.LOW,
     40: gpio.LOW,
 }
+
 
 def set_defaults(except_channels):
     gpio.setmode(gpio.BOARD)
