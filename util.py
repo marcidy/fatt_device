@@ -3,9 +3,6 @@ import os
 import requests
 
 
-DEBUG = True
-
-
 def report_attempt(rfid, result):
     ASSET_ID = os.environ['AMTGC_ASSET_ID']
     GC_ASSET_TOKEN = os.environ['AMTGC_ASSET_TOKEN']
