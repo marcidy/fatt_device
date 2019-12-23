@@ -11,7 +11,7 @@ EnvironmentFile=/home/pi/amt_door/fatt.env
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/amt_door
-ExecStart=/home/pi/amt_door/venv/bin/python -u main.py
+ExecStart=/home/pi/venv/bin/python -u main.py
 Restart=on-failure
 
 [Install]
