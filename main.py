@@ -1,7 +1,4 @@
-from datetime import datetime
-import os
 import time
-import requests
 import RPi.GPIO as gpio
 
 from defaults import set_defaults
@@ -19,7 +16,7 @@ locked = True  # is the door currently locked?
 lock_opened_time = 0  # when did we unlock the door?
 lock_open_delay_s = 1  # open delay in seconds
 
-DEBUG = True
+DEBUG = False
 
 
 def reset_scan():
@@ -47,20 +44,20 @@ def unlock_door():
     global locked
     global lock_opened_time
 
-    gpio.output(31, gpio.HIGH)
+    gpio.output(22, gpio.HIGH)
     lock_opened_time = time.time()
     locked = False
 
 
 def lock_door():
     global locked
-    gpio.output(31, gpio.LOW)
+    gpio.output(22, gpio.LOW)
     locked = True
 
 
 gpio.setmode(gpio.BOARD)
 # setting default pins to give somewhat calmer electrical behavior on makerspace-auth board
-set_defaults([7, 13, 31])
+set_defaults([7, 13, 22])
 # Confgure weigan reader pins as inputs, pulled up, which call the 'detect' function when a falling edge
 # is detected.
 gpio.setup(7, gpio.IN, pull_up_down=gpio.PUD_UP)
@@ -68,8 +65,8 @@ gpio.setup(13, gpio.IN, pull_up_down=gpio.PUD_UP)
 gpio.add_event_detect(7, gpio.FALLING, callback=detect)
 gpio.add_event_detect(13, gpio.FALLING, callback=detect)
 
-# pin 31 connects to J12 connector which is the relay
-gpio.setup(31, gpio.OUT)
+# pin 22 connects to J12 connector which is the relay
+gpio.setup(22, gpio.OUT)
 
 
 if __name__ == "__main__":
