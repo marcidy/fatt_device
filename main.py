@@ -59,6 +59,7 @@ class Laser:
 
     def __init__(self, port='/dev/ttyACM0', baudrate=9600):
         self.reset_usb()
+        time.sleep(1)
         self.conn = Serial(port, baudrate)
         self.enabled = False  # Do I need to send disable on service start?
         self.authorized = None
@@ -66,16 +67,19 @@ class Laser:
         self.rfid_flag = ''
         self.current_cut = None
 
+    def write_raw(self, msg):
+        self.conn.write(msg)
+
     def write(self, msg):
-        self.conn.write('{}\n'.format(msg).encode('ascii'))
+        self.write_raw(b'{}\n'.format(msg.encode('ascii')))
 
     def raw_read(self):
         # default terminator is '\n' but explict is good
-        return self.conn.read_until('\n')
+        return self.conn.read_until(b'\n')
 
     def read(self):
         more = True
-        data = ''
+        data = b''
         while more:
             data += self.raw_read()
             if self.conn.in_waiting <= 0:
@@ -157,7 +161,7 @@ if __name__ == '__main__':
             if rfid:
                 authorized = rfid in authorized_rfids
                 report_attempt(rfid, authorized)
-            cut = Cut(rfid) # set up current cut for this user
+            cut = Cut(rfid)  # set up current cut for this user
             Laser.rfid_flag = '0'
 
         # What is the enble vs authorized flow?
