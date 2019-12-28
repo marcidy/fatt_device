@@ -187,7 +187,8 @@ def main():
     rfid = None
     next_state = state
     laser.display("Scan fob to start", "")
-    last_laser_odometer = laser.odometer()
+    last_laser_odometer = laser.odometer
+    line1, line2 = ("AMT L4z0|R", "Swipe in")
 
     while True:
         laser.status()
@@ -232,7 +233,7 @@ def main():
             line1, line2 = ("IMAA FIRE", "MUH LAZOR")
             manager.pet()
 
-        elif state == State.DEAUTHRORIZED:
+        elif state == State.DEAUTHORIZED:
             laser.disable()
             manager.logout()
             line1, line2 = ("Logging out...", "Swipe to Login")
@@ -246,7 +247,7 @@ def main():
         laser.display(line1, line2)
         laser.rfid_flag = '0'
         rfid = None
-        last_laser_odometer = laser.odometer()
+        last_laser_odometer = laser.odometer
         if DEBUG:
             if next_state != state:
                 print("{} --> {}".format(state, next_state))
