@@ -181,7 +181,6 @@ class State(Enum):
 
 def main():
 
-    # Pull status from Teensy.  Updates RFID flag and cut time
     manager = AuthManager()
     laser = Laser()
     state = State.INIT
@@ -192,6 +191,7 @@ def main():
     line1, line2 = ("AMT L4z0|R", "Swipe in")
 
     while True:
+    	# Pull status from Teensy.  Updates RFID flag and cut time
         laser.status()
 
         if laser.odometer > last_laser_odometer:
