@@ -41,6 +41,7 @@ $ python3 -m venv venv
 $ source venv/bin/activate
 $ pip install requests
 $ pip install RPi.GPIO
+$ pip install pyserial
 
 If you have a customized wpa_supplicant.conf, add it to /etc/wpa_supplicant/ folder and restart
 
