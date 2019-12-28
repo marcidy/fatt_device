@@ -20,6 +20,7 @@ $ chmod 400 /home/pi/.ssh/authorized_keys
 Restrict permissions to .ssh directory
 $ chmod 700 /home/pi/.ssh
 
+Eject the SD card and insert it into a raspberry pi
 Connect the device to an accessible network
 Log into the device to contine with the rest of the steps.
 
