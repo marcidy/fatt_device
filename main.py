@@ -1,100 +1,173 @@
 import time
-import RPi.GPIO as gpio
-
-from defaults import set_defaults
+try:
+    from subprocess import run
+except ImportError:
+    from subprocess import call as run
+from serial import Serial
 from util import (
     report_attempt,
     load_whitelist,
 )
 
-bit_string = ''  # ID string of bits e.g. '1001'
-previous_bit_detected_time = 0  # Time of last bit detected
-bit_detected = False  # have we started detecting a scan?
-bit_string_time_out_ms = 100  # miliseconds
 
-locked = True  # is the door currently locked?
-lock_opened_time = 0  # when did we unlock the door?
-lock_open_delay_s = 1  # open delay in seconds
+class Cut:
+    '''Handle current cut with context manager'''
 
-DEBUG = False
+    def __init__(self, user):
+        self.user = user
+        self.start = None
+        self.stop = None
 
+    def start(self):
+        if self.start is not None:
+            raise ValueError("Cut already started!")
+        self.start = time.time()
 
-def reset_scan():
-    global bit_string
-    global bit_detected
+    def time(self):
+        '''time of cut, in seconds, since self.start'''
+        _stop = self.stop if self.stop is not None else time.time()
+        return _stop - self.start
 
-    bit_detected = False
-    bit_string = ''
+    def cost(self, price_per_min):
+        ''' price of cut is a cost per minute, so the length of the cut
+        is turned into minutes '''
+        return price_per_min * self.time()/60
 
+    def __enter__(self):
+        if self.user is None:
+            raise ValueError("Attempted to cut without setting cut user")
+        self.start()
 
-def detect(pin):
-    global bit_string
-    global bit_detected
-    global previous_bit_detected_time
+    def __exit__(self):
+        self.stop = time.time()
 
-    bit_detected = True
-    previous_bit_detected_time = time.time()
-    values = {7: '0', 13: '1'}
-    bit_string += values[pin]
-    if DEBUG:
-        print("detecting: {}, prevtime: {}, bs: {}".format(bit_detected, previous_bit_detected_time, bit_string))
+    def report(self):
+        return {'time': self.time(), 'cost': self.cost()}
 
-
-def unlock_door():
-    global locked
-    global lock_opened_time
-
-    gpio.output(22, gpio.HIGH)
-    lock_opened_time = time.time()
-    locked = False
+    def __str__(self):
+        return "User: {}, Cost: {}, Start: {}, End: {}".format(
+            self.user, self.cost, self.start, self.stop)
 
 
-def lock_door():
-    global locked
-    gpio.output(22, gpio.LOW)
-    locked = True
+class Laser:
+
+    USB_PATH = "/sys/bus/usb/devices/usb1/authorized"
+    # would prefer if the ATTINY weren't so opinionated about what to do.
+    # why save to eeprom when you can just send information about if the
+    # laser is firing to the rpi and save it there?
+    # Why using such a slow baudrate?  ATTINYs are fast.
+
+    def __init__(self, port='/dev/ttyACM0', baudrate=9600):
+        self.reset_usb()
+        self.conn = Serial(port, baudrate)
+        self.enabled = False  # Do I need to send disable on service start?
+        self.authorized = None
+        self.odometer = ''
+        self.rfid_flag = ''
+        self.current_cut = None
+
+    def write(self, msg):
+        self.conn.write('{}\n'.format(msg).encode('ascii'))
+
+    def raw_read(self):
+        # default terminator is '\n' but explict is good
+        return self.conn.read_until('\n')
+
+    def read(self):
+        more = True
+        data = ''
+        while more:
+            data += self.raw_read()
+            if self.conn.in_waiting <= 0:
+                more = False
+        if data:
+            return data.decode('ascii')
+        else:
+            return ''
+
+    def enable(self):
+        self.write("e")
+        self.enabled = True
+
+    def disable(self):
+        self.write("d")
+        self.enabled = False
+
+    def reset_usb(self):
+        run(["echo", "0", self.USB_PATH])
+        run(["echo", "1", self.USB_PATH])
+        time.sleep(2)
+
+    def display(self, line1='', line2=''):
+        if line1:
+            self.write('p'+line1)
+        if line2:
+            self.write('q'+line2)
+
+    def status(self):
+        ''' Reads status from the laser, which is a string
+        'o{cut_time}x{rfid_flag}'
+        cut_time is how long the laser has been firing for
+        rfid_flag indicates if a swipe was done'''
+
+        self.write('o')
+        data = self.read()
+        if data:
+            try:
+                self.odometer, self.rfid_flag = data[1:].split('x')
+            except Exception:
+                print("Error: status - {}".format(data))
+
+    def rfid(self):
+        self.write("r")
+        data = self.read()
+        return data[1:]
+
+    def reset_cut_time(self):
+        self.write('x')
+
+    def update_cut_time(self):
+        self.write('y')
+
+    def read_cut_time(self):
+        self.write('z')
 
 
-gpio.setmode(gpio.BOARD)
-# setting default pins to give somewhat calmer electrical behavior on makerspace-auth board
-set_defaults([7, 13, 22])
-# Confgure weigan reader pins as inputs, pulled up, which call the 'detect' function when a falling edge
-# is detected.
-gpio.setup(7, gpio.IN, pull_up_down=gpio.PUD_UP)
-gpio.setup(13, gpio.IN, pull_up_down=gpio.PUD_UP)
-gpio.add_event_detect(7, gpio.FALLING, callback=detect)
-gpio.add_event_detect(13, gpio.FALLING, callback=detect)
-
-# pin 22 connects to J12 connector which is the relay
-gpio.setup(22, gpio.OUT)
-
-
-if __name__ == "__main__":
-
-    reset_scan()
-    lock_door()
+if __name__ == '__main__':
+    print("Laser service starting....")
+    print(time.time())
+    rfid_update_time = 0
+    last_scanned_rfid = None
+    authorized_rfids = []
     authorized = False
-    scanned_id = ''
-
-    authorized_rfids = load_whitelist()
+    laser = Laser()
+    cut = None
 
     while True:
-        if (bit_detected and (time.time() - previous_bit_detected_time)*1000 > bit_string_time_out_ms):
-            # Noise from load currently triggers spurious reads on wiegand inputs.
-            # More than 30 bits of data on the interface indicates a decent attempted at an RFID.
-            if len(bit_string) > 30:
-                scanned_id = str(hex(int(bit_string[:-1], 2))).upper()[3:]
-                authorized = scanned_id in authorized_rfids
-                print("ID: {} Authorized: {}".format(scanned_id, authorized))
-                report_attempt(scanned_id, authorized)
+        if time.time() - rfid_update_time > 60*5:
+            # check for new whitelist every 5m
+            authorized_rfids = load_whitelist()
+            rfid_update_time = time.time()
 
-            reset_scan()
+        # Pull status from Teensy.  Updates RFID flag and cut time
+        Laser.status()
 
-        if authorized and locked is True:
-            authorized = False
-            unlock_door()
+        if Laser.rfid_flag == '1':
+            rfid = Laser.rfid()
+            if rfid:
+                authorized = rfid in authorized_rfids
+                report_attempt(rfid, authorized)
+            cut = Cut(rfid) # set up current cut for this user
+            Laser.rfid_flag = '0'
 
-        if (not locked and (time.time() - lock_opened_time) > lock_open_delay_s):
-            lock_door()
+        # What is the enble vs authorized flow?
+        # 0 - not enabled, not authorized
+        # 1 - authorized, not enabled
+        # 2 - not authorized, enabled ( illegal )
+        # 3 - authorized, enabled
 
-        time.sleep(.001)
+        # if authorized:
+        #    what does a new RFID scan mean?  Surely I dont stop the cut.
+        #    ignore if enabled?
+
+        time.sleep(.001)  # sleep to the OS for 1ms

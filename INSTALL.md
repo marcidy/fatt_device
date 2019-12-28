@@ -48,12 +48,12 @@ If you have a customized wpa_supplicant.conf, add it to /etc/wpa_supplicant/ fol
 Acquire the fatt device deployment key and put in the .ssh directory.  This key is read only on the fatt device repo.  Write keys should not be useed.
 
 # clone repo
-$ git clone <this repo> amt_door
+$ git clone <this repo> amt_laser
 
 # link systemd files to /etc/systemd/system
-$ sudo ln -s /home/pi/amt_door/systemd/amt_door.service /etc/systemd/system/amt_door.service
-$ sudo ln -s /home/pi/amt_door/systemd/getrfids.service /etc/systemd/system/getrfids.service
-$ sudo ln -s /home/pi/amt_door/systemd/getrfids.timer /etc/systemd/system/getrfids.timer
+$ sudo ln -s /home/pi/amt_laser/systemd/amt_laser.service /etc/systemd/system/amt_laser.service
+$ sudo ln -s /home/pi/amt_laser/systemd/getrfids.service /etc/systemd/system/getrfids.service
+$ sudo ln -s /home/pi/amt_laser/systemd/getrfids.timer /etc/systemd/system/getrfids.timer
 
 # Environment Files
 Two environment files are required, fatt.env and device.env.  fatt.env is application wide variables and device.env are device specific.  It'd be nice to automate the generation of these files at somme point.
@@ -77,11 +77,11 @@ $ sudo systemctl daemon-reload
 # install systemd services
 $ sudo systemctl enable getrfids.timer
 $ sudo systemctl start getrfids.timer
-$ sudo systemctl enable amt_door.service
-$ sudo systemctl start amt_door.service
+$ sudo systemctl enable amt_laser.service
+$ sudo systemctl start amt_laser.service
 
 # Check rfid download 
-rfid shoulds be downloaded to ~/amt_door/authorized.txt, check timestamp and file integrity
+rfid shoulds be downloaded to ~/amt_laser/authorized.txt, check timestamp and file integrity
 
 # Update hostname
 update the device hostname in /etc/hostname. The hostname should be 'amt<door number>' where <door number> is like '113' for the acl device controlling the door to room 113.  This is not a FQDN, it's just the host name.
