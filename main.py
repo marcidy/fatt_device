@@ -138,8 +138,9 @@ class AuthManager:
         self.rfid_update_time = 0
         self.last_scanned_rfid = None
         self.authorized_rfid = None
+        self.update_rfids()
         self.authorized = False
-        self.authorization_timeout = Timer(10*60)  # 10m timeout
+        self.authorization_timeout = Timer(60)  # 1m timeout
 
     def update_rfids(self):
         if time.time() - self.rfid_update_time > 60*5:
@@ -156,7 +157,7 @@ class AuthManager:
             self.authorized = True
             self.authorized_rfid = rfid
             print("Logged in: {}".format(rfid))
-            self.authorization.timeout.start()
+            self.authorization_timeout.start()
 
     def logout(self):
         if self.authorized:
@@ -186,7 +187,7 @@ def main():
     state = State.INIT
     rfid = None
     next_state = state
-    laser.display("Scan fob to start", "")
+    laser.display("Please Wait...", "")
     last_laser_odometer = laser.odometer
     line1, line2 = ("AMT L4z0|R", "Swipe in")
 
@@ -212,16 +213,19 @@ def main():
         if laser.rfid_flag == '1':
             # New scan reported by Teensy
             rfid = laser.rfid()
+            if DEBUG:
+                print("{} scanned".format(rfid))
 
         if state == State.INIT:
 
-            if rfid and not manager.authroized:
-                manager.login(laser.rfid())
-                laser.enable()
-                next_state = State.ENABLED
-                line1, line2 = ("{}".format(manager.authorized_rfid),
-                                "Logged in")
-            elif rfid == manager.authorized_rfid:
+            if rfid and not manager.authorized:
+                manager.login(rfid)
+                if manager.authorized:
+                    laser.enable()
+                    next_state = State.ENABLED
+                    line1, line2 = ("{}".format(manager.authorized_rfid),
+                                    "Logged in")
+            elif rfid and rfid == manager.authorized_rfid:
                 next_state = State.DEAUTHORIZED
 
         elif state == State.ENABLED:
@@ -252,6 +256,7 @@ def main():
             if next_state != state:
                 print("{} --> {}".format(state, next_state))
         state = next_state
+        manager.update_rfids()
 
         time.sleep(.1)
 
