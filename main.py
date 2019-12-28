@@ -71,21 +71,21 @@ class Laser:
         self.conn.write(msg)
 
     def write(self, msg):
-        self.write_raw(b'{}\n'.format(msg.encode('ascii')))
+        self.write_raw(bytes('{}\n'.format(msg), 'ascii'))
 
-    def raw_read(self):
+    def read_raw(self):
         # default terminator is '\n' but explict is good
         return self.conn.read_until(b'\n')
 
     def read(self):
-        more = True
+        more = self.conn.in_waiting > 0
         data = b''
         while more:
-            data += self.raw_read()
+            data += self.read_raw()
             if self.conn.in_waiting <= 0:
                 more = False
         if data:
-            return data.decode('ascii')
+            return data.decode('ascii').strip('\n')
         else:
             return ''
 
@@ -98,9 +98,10 @@ class Laser:
         self.enabled = False
 
     def reset_usb(self):
-        run(["echo", "0", self.USB_PATH])
-        run(["echo", "1", self.USB_PATH])
-        time.sleep(2)
+        with open(self.USB_PATH, 'w') as f:
+            f.write('0')
+            time.sleep(1)
+            f.write('1')
 
     def display(self, line1='', line2=''):
         if line1:
@@ -115,6 +116,7 @@ class Laser:
         rfid_flag indicates if a swipe was done'''
 
         self.write('o')
+        time.sleep(.5)
         data = self.read()
         if data:
             try:
@@ -124,8 +126,12 @@ class Laser:
 
     def rfid(self):
         self.write("r")
-        data = self.read()
-        return data[1:]
+        time.sleep(.5)
+        data = self.read()[1:]
+        if len(data) == 8:
+            return data
+        if len(data) == 10:
+            return data[2:]
 
     def reset_cut_time(self):
         self.write('x')

@@ -24,4 +24,4 @@ def report_attempt(rfid, result):
 def load_whitelist():
     with open("authorized.txt", 'r') as f:
         authorized_rfids = f.read().split("\n")
-        return authorized_rfids
+        return [id for id in authorized_rfids if id not in ['']]
