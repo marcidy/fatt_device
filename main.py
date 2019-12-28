@@ -1,4 +1,5 @@
 import time
+from enum import Enum
 try:
     from subprocess import run
 except ImportError:
@@ -10,43 +11,32 @@ from util import (
 )
 
 
-class Cut:
-    '''Handle current cut with context manager'''
+DEBUG = True
 
-    def __init__(self, user):
-        self.user = user
-        self.start = None
-        self.stop = None
+
+class Timer:
+
+    def __init__(self, seconds):
+        self.__seconds = seconds
+        self.__running = False
+        self.__timeout = False
+        self.start_time = 0
 
     def start(self):
-        if self.start is not None:
-            raise ValueError("Cut already started!")
-        self.start = time.time()
+        self.__running = True
+        self.__start_time = time.time()
 
-    def time(self):
-        '''time of cut, in seconds, since self.start'''
-        _stop = self.stop if self.stop is not None else time.time()
-        return _stop - self.start
+    def check(self):
+        '''True if timer is disabled or not timed out'''
+        self.__timeout = (not self.__running or
+                          time.time() - self.__start_time < self.__seconds)
+        return self.__timeout
 
-    def cost(self, price_per_min):
-        ''' price of cut is a cost per minute, so the length of the cut
-        is turned into minutes '''
-        return price_per_min * self.time()/60
+    def stop(self):
+        self.__running = False
 
-    def __enter__(self):
-        if self.user is None:
-            raise ValueError("Attempted to cut without setting cut user")
-        self.start()
-
-    def __exit__(self):
-        self.stop = time.time()
-
-    def report(self):
-        return {'time': self.time(), 'cost': self.cost()}
-
-    def __str__(self):
-        return "User: {}, Cost: {}, Start: {}, End: {}".format(
-            self.user, self.cost, self.start, self.stop)
+    def reset(self):
+        self.__start_time = time.time()
 
 
 class Laser:
@@ -61,11 +51,8 @@ class Laser:
         self.reset_usb()
         time.sleep(1)
         self.conn = Serial(port, baudrate)
-        self.enabled = False  # Do I need to send disable on service start?
-        self.authorized = None
-        self.odometer = ''
-        self.rfid_flag = ''
-        self.current_cut = None
+        self.disable()  # Do I need to send disable on service start?
+        self.status()
 
     def write_raw(self, msg):
         self.conn.write(msg)
@@ -116,7 +103,7 @@ class Laser:
         rfid_flag indicates if a swipe was done'''
 
         self.write('o')
-        time.sleep(.5)
+        time.sleep(.1)
         data = self.read()
         if data:
             try:
@@ -126,7 +113,7 @@ class Laser:
 
     def rfid(self):
         self.write("r")
-        time.sleep(.5)
+        time.sleep(.1)
         data = self.read()[1:]
         if len(data) == 8:
             return data
@@ -143,41 +130,130 @@ class Laser:
         self.write('z')
 
 
-if __name__ == '__main__':
-    print("Laser service starting....")
-    print(time.time())
-    rfid_update_time = 0
-    last_scanned_rfid = None
-    authorized_rfids = []
-    authorized = False
+class AuthManager:
+
+    def __init__(self):
+        print("Laser service starting....")
+        print(time.time())
+        self.rfid_update_time = 0
+        self.last_scanned_rfid = None
+        self.authorized_rfid = None
+        self.authorized = False
+        self.authorization_timeout = Timer(10*60)  # 10m timeout
+
+    def update_rfids(self):
+        if time.time() - self.rfid_update_time > 60*5:
+            # check for new whitelist every 5m
+            self.authorized_rfids = load_whitelist()
+            self.rfid_update_time = time.time()
+
+    def check_rfid(self, rfid):
+        report_attempt(rfid, self.authorized)
+        return rfid in self.authorized_rfids
+
+    def login(self, rfid):
+        if self.check_rfid(rfid):
+            self.authorized = True
+            self.authorized_rfid = rfid
+            print("Logged in: {}".format(rfid))
+            self.authorization.timeout.start()
+
+    def logout(self):
+        if self.authorized:
+            print("Logging out: {}".format(self.authorized_rfid))
+        self.authorized = False
+        self.authorized_rfid = None
+        self.authorization_timeout.stop()
+        self.authorization_timeout.reset()
+
+    def pet(self):
+        self.authorization_timeout.reset()
+
+
+class State(Enum):
+    INIT = 0
+    AUTHORIZED = 1
+    ENABLED = 2
+    FIRING = 3
+    DEAUTHORIZED = 4
+
+
+def main():
+
+    # Pull status from Teensy.  Updates RFID flag and cut time
+    manager = AuthManager()
     laser = Laser()
-    cut = None
+    state = State.INIT
+    rfid = None
+    next_state = state
+    laser.display("Scan fob to start", "")
+    last_laser_odometer = laser.odometer()
 
     while True:
-        if time.time() - rfid_update_time > 60*5:
-            # check for new whitelist every 5m
-            authorized_rfids = load_whitelist()
-            rfid_update_time = time.time()
+        laser.status()
 
-        # Pull status from Teensy.  Updates RFID flag and cut time
-        Laser.status()
+        if laser.odometer > last_laser_odometer:
+            # If the odometer is increasing, the laser is firing.  This is
+            # defined behavior in the teensy firmware.  This is not the
+            # ideal indicator, we should bring the actual value of the
+            # firing pin directly to the pi.
+            state = State.FIRING
+            # This is an immediate set as it is reflecting existing state.
 
-        if Laser.rfid_flag == '1':
-            rfid = Laser.rfid()
-            if rfid:
-                authorized = rfid in authorized_rfids
-                report_attempt(rfid, authorized)
-            cut = Cut(rfid)  # set up current cut for this user
-            Laser.rfid_flag = '0'
+        if state == State.FIRING and not manager.authorized:
+            # catch bad state
+            laser.disable()
+            manager.logout()
+            next_state = State.Init
+            line1, line2 = ("** ERROR **", "Bad Laser State!")
+            print("ERROR: Laser fired without Authorization Flag")
 
-        # What is the enble vs authorized flow?
-        # 0 - not enabled, not authorized
-        # 1 - authorized, not enabled
-        # 2 - not authorized, enabled ( illegal )
-        # 3 - authorized, enabled
+        if laser.rfid_flag == '1':
+            # New scan reported by Teensy
+            rfid = laser.rfid()
 
-        # if authorized:
-        #    what does a new RFID scan mean?  Surely I dont stop the cut.
-        #    ignore if enabled?
+        if state == State.INIT:
 
-        time.sleep(.001)  # sleep to the OS for 1ms
+            if rfid and not manager.authroized:
+                manager.login(laser.rfid())
+                laser.enable()
+                next_state = State.ENABLED
+                line1, line2 = ("{}".format(manager.authorized_rfid),
+                                "Logged in")
+            elif rfid == manager.authorized_rfid:
+                next_state = State.DEAUTHORIZED
+
+        elif state == State.ENABLED:
+            # Timer is ticking down in this state
+            pass
+
+        elif state == State.FIRING and manager.authorized:
+            # firing, display odometer and cost
+            line1, line2 = ("IMAA FIRE", "MUH LAZOR")
+            manager.pet()
+
+        elif state == State.DEAUTHRORIZED:
+            laser.disable()
+            manager.logout()
+            line1, line2 = ("Logging out...", "Swipe to Login")
+            next_state = State.INIT
+
+        if manager.authorization_timeout.check() is False:
+            next_state = State.DEAUTHORIZED
+            line1 = "Inactivity Timeout"
+
+        # clean up, set next state
+        laser.display(line1, line2)
+        laser.rfid_flag = '0'
+        rfid = None
+        last_laser_odometer = laser.odometer()
+        if DEBUG:
+            if next_state != state:
+                print("{} --> {}".format(state, next_state))
+        state = next_state
+
+        time.sleep(.1)
+
+
+if __name__ == '__main__':
+    main()
