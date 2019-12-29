@@ -39,9 +39,7 @@ $ sudo apt-get install python3-pip python3-venv git
 $ python3 -m pip install --user --upgrade pip
 $ python3 -m venv venv 
 $ source venv/bin/activate
-$ pip install requests
-$ pip install RPi.GPIO
-$ pip install pyserial
+$ pip install -r requirements.txt
 
 If you have a customized wpa_supplicant.conf, add it to /etc/wpa_supplicant/ folder and restart
 
