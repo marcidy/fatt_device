@@ -2,3 +2,4 @@ RPi.GPIO
 requests
 pyserial
 pytest
+pytest-cov

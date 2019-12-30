@@ -20,7 +20,7 @@ class Timer:
         self.__seconds = seconds
         self.__running = False
         self.__timeout = False
-        self.start_time = 0
+        self.__start_time = 0
 
     def start(self):
         self.__running = True
@@ -40,9 +40,34 @@ class Timer:
 
 
 class Laser:
+    '''The pi interfaces with the laser through a Teensy connected via
+    a USB port.  The Teensy responds to binary encoded ascii characters,
+    and sends binary encoded ascii strings.  The complete interface is
+    documented :FIXME:.
+
+    The USB port needs to be reset on initialization to capture it.  This
+    requires writing to the USB_PATH as root.
+
+    The Teensy itself runs firmware from :FIXME:
+
+    The Teensy responds to a status command 'o' with the current time
+    it's been firing and a flag indiciating a new rfid scan.
+
+    The Teensy state is reported as 'current firiing time since last reset' and
+    'new rfid scan'.
+
+    If there has been a new scan, the Teensy will send the ID following a 'r'
+    command.
+
+    The pi needs to manage the implications of the state (e.g. an increase in
+    firing time indicates the laser has been on, and the pi determines if the
+    rfid token is authorized.)
+
+    The laser is a reporting a simple state when polled.  So the pi must
+    continually poll the laser state and manage it's authorization state.'''
 
     USB_PATH = "/sys/bus/usb/devices/usb1/authorized"
-    # would prefer if the ATTINY weren't so opinionated about what to do.
+    # would prefer if the Teensy weren't so opinionated about what to do.
     # why save to eeprom when you can just send information about if the
     # laser is firing to the rpi and save it there?
     # Why using such a slow baudrate?  ATTINYs are fast.
@@ -136,7 +161,6 @@ class AuthManager:
         print("Laser service starting....")
         print(time.time())
         self.rfid_update_time = 0
-        self.last_scanned_rfid = None
         self.authorized_rfid = None
         self.update_rfids()
         self.authorized = False
@@ -165,7 +189,6 @@ class AuthManager:
         self.authorized = False
         self.authorized_rfid = None
         self.authorization_timeout.stop()
-        self.authorization_timeout.reset()
 
     def pet(self):
         self.authorization_timeout.reset()

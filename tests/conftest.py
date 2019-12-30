@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 import tempfile
-from main import Laser
+from main import Laser, AuthManager
 
 
 @pytest.fixture(scope='function')

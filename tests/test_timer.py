@@ -8,7 +8,7 @@ def test_timer_init():
     assert t._Timer__seconds == 100
     assert not t._Timer__running
     assert not t._Timer__timeout
-    assert t.start_time == 0
+    assert t._Timer__start_time == 0
     assert t.check()
 
 
@@ -19,7 +19,7 @@ def test_timer():
 
     assert t._Timer__running
     assert not t._Timer__timeout
-    assert t.start_time < time.time()
+    assert t._Timer__start_time < time.time()
     assert t.check()
 
     t.stop()
