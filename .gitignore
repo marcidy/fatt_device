@@ -2,6 +2,7 @@ rfids
 *.env
 venv/
 
+__pycache__/
 
 authorized.txt
-
+.coverage
