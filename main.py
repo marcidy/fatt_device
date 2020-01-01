@@ -1,9 +1,5 @@
 import time
 from enum import Enum
-try:
-    from subprocess import run
-except ImportError:
-    from subprocess import call as run
 from serial import Serial
 from util import (
     report_attempt,
@@ -12,6 +8,16 @@ from util import (
 
 
 DEBUG = True
+ACTIVITY_TIMEOUT = 5*60  # 5min activity timeout
+
+
+class StateValues(Enum):
+    INIT = 0
+    AUTHORIZED = 1
+    ENABLED = 2
+    FIRING = 3
+    DEAUTHORIZED = 4
+    DISABLED = 5
 
 
 class Timer:
@@ -164,13 +170,10 @@ class AuthManager:
         self.authorized_rfid = None
         self.update_rfids()
         self.authorized = False
-        self.authorization_timeout = Timer(60)  # 1m timeout
 
     def update_rfids(self):
-        if time.time() - self.rfid_update_time > 60*5:
-            # check for new whitelist every 5m
-            self.authorized_rfids = load_whitelist()
-            self.rfid_update_time = time.time()
+        self.authorized_rfids = load_whitelist()
+        self.rfid_update_time = time.time()
 
     def check_rfid(self, rfid):
         report_attempt(rfid, self.authorized)
@@ -190,97 +193,104 @@ class AuthManager:
         self.authorized_rfid = None
         self.authorization_timeout.stop()
 
-    def pet(self):
-        self.authorization_timeout.reset()
 
+class Controller:
 
-class State(Enum):
-    INIT = 0
-    AUTHORIZED = 1
-    ENABLED = 2
-    FIRING = 3
-    DEAUTHORIZED = 4
+    def __init__(self, manager, resource):
+        self.manager = manager
+        self.resource = resource
+        self.internal_states = self.emit_state()
+        self.state = StateValues.INIT
+        self.activty_timer = Timer(ACTIVITY_TIMEOUT)
+
+    def scan(self):
+        current_rfid = self.manager.authorized_rfid
+        new_rfid = self.resource.get_rfid()
+        self.resource.rfid_flag = '0'
+
+        if self.manager.authorized:
+            self.manager.logout()
+
+        if new_rfid != current_rfid:
+            self.manager.login(new_rfid)
+
+    def emit_state(self):
+        return {
+            'odometer': self.resource.odometer,
+            'enabled': self.resource.enabled,
+            'authorized': self.manager.authorized,
+            'scanned': self.resource.rfid_flag == '1'}
+
+    def calculate_state(self):
+        new_internal_state = self.emit_state()
+
+        enabled = new_internal_state['enabled']
+        laser_on = (new_internal_state['odometer'] >
+                    self.internal_states['odometer'])
+        authorized = new_internal_state['authorized']
+        scanned = new_internal_state['scanned']
+
+        if scanned:
+            self.scan()
+
+        if laser_on and (not authorized or not enabled):
+            print("Error - Laser firing without auth or enable flag set")
+            next_state = StateValues.INIT
+
+        elif laser_on:
+            next_state = StateValues.FIRING
+
+        elif not laser_on and not authorized:
+            next_state = StateValues.INIT
+
+        elif not laser_on and not enabled and authorized:
+            next_state = StateValues.ENALBED
+
+        if not self.activity_timer.check():
+            # activity timeout
+            next_state = StateValues.INIT
+
+        self.internal_states = new_internal_state
+        return next_state
+
+    def run(self):
+        self.resource.status()
+        next_state = self.calculate_state()
+
+        if next_state == StateValues.INIT:
+            self.resource.disable()
+            self.manager.logout()
+            self.activity_timer.stop()
+            self.activity_timer.reset()
+            self.resource.display("Please swipe", "fob to continue")
+
+        if self.state == StateValues.INIT and next_state != StateValues.INIT:
+            self.activity_timer.start()
+
+        elif next_state == StateValues.ENABLED:
+            self.resource.enable()
+            self.resource.display("Welcome", self.manager.authorized_rfid)
+
+        if DEBUG and self.state != next_state:
+            print("{} --> {}".format(self.state, next_state))
+
+        self.state = next_state
 
 
 def main():
 
     manager = AuthManager()
     laser = Laser()
-    state = State.INIT
-    rfid = None
-    next_state = state
+    controller = Controller(manager, laser)
+    whitelist_update_timer = Timer(60)
+    whitelist_update_timer.start()
     laser.display("Please Wait...", "")
-    last_laser_odometer = laser.odometer
-    line1, line2 = ("AMT L4z0|R", "Swipe in")
 
     while True:
-    	# Pull status from Teensy.  Updates RFID flag and cut time
-        laser.status()
-
-        if laser.odometer > last_laser_odometer:
-            # If the odometer is increasing, the laser is firing.  This is
-            # defined behavior in the teensy firmware.  This is not the
-            # ideal indicator, we should bring the actual value of the
-            # firing pin directly to the pi.
-            state = State.FIRING
-            # This is an immediate set as it is reflecting existing state.
-
-        if state == State.FIRING and not manager.authorized:
-            # catch bad state
-            laser.disable()
-            manager.logout()
-            next_state = State.Init
-            line1, line2 = ("** ERROR **", "Bad Laser State!")
-            print("ERROR: Laser fired without Authorization Flag")
-
-        if laser.rfid_flag == '1':
-            # New scan reported by Teensy
-            rfid = laser.rfid()
-            if DEBUG:
-                print("{} scanned".format(rfid))
-
-        if state == State.INIT:
-
-            if rfid and not manager.authorized:
-                manager.login(rfid)
-                if manager.authorized:
-                    laser.enable()
-                    next_state = State.ENABLED
-                    line1, line2 = ("{}".format(manager.authorized_rfid),
-                                    "Logged in")
-            elif rfid and rfid == manager.authorized_rfid:
-                next_state = State.DEAUTHORIZED
-
-        elif state == State.ENABLED:
-            # Timer is ticking down in this state
-            pass
-
-        elif state == State.FIRING and manager.authorized:
-            # firing, display odometer and cost
-            line1, line2 = ("IMAA FIRE", "MUH LAZOR")
-            manager.pet()
-
-        elif state == State.DEAUTHORIZED:
-            laser.disable()
-            manager.logout()
-            line1, line2 = ("Logging out...", "Swipe to Login")
-            next_state = State.INIT
-
-        if manager.authorization_timeout.check() is False:
-            next_state = State.DEAUTHORIZED
-            line1 = "Inactivity Timeout"
-
-        # clean up, set next state
-        laser.display(line1, line2)
-        laser.rfid_flag = '0'
-        rfid = None
-        last_laser_odometer = laser.odometer
-        if DEBUG:
-            if next_state != state:
-                print("{} --> {}".format(state, next_state))
-        state = next_state
-        manager.update_rfids()
-
+        controller.run()
+        if not whitelist_update_timer.check():
+            manager.update_rfids()
+            whitelist_update_timer.reset()
         time.sleep(.1)
 
 
