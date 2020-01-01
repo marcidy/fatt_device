@@ -160,6 +160,10 @@ class Laser:
     def read_cut_time(self):
         self.write('z')
 
+    def cost(self, firing_time):
+        LASER_COST = .5  # make env var in device.env
+        return firing_time / 60 * LASER_COST
+
 
 class AuthManager:
 
@@ -172,11 +176,11 @@ class AuthManager:
         self.authorized = False
 
     def update_rfids(self):
-        self.authorized_rfids = load_whitelist()
+        self.whitelist = load_whitelist()
 
     def check_rfid(self, rfid):
         report_attempt(rfid, self.authorized)
-        return rfid in self.authorized_rfids
+        return rfid in self.whitelist
 
     def login(self, rfid):
         if self.check_rfid(rfid):
@@ -198,7 +202,9 @@ class Controller:
         self.resource = resource
         self.internal_states = self.emit_state()
         self.state = StateValues.INIT
-        self.activty_timer = Timer(ACTIVITY_TIMEOUT)
+        self.activity_timer = Timer(ACTIVITY_TIMEOUT)
+        self.firing_start = 0
+        self.firing_end = 0
 
     def scan(self):
         current_rfid = self.manager.authorized_rfid
@@ -227,7 +233,11 @@ class Controller:
         authorized = new_internal_state['authorized']
         scanned = new_internal_state['scanned']
 
-        if scanned:
+        # by default, next state = current state
+        next_state = self.state
+
+        if self.state == StateValues.INIT and scanned:
+            # only scans new fobs when in INIT state
             self.scan()
 
         if laser_on and (not authorized or not enabled):
@@ -240,8 +250,8 @@ class Controller:
         elif not laser_on and not authorized:
             next_state = StateValues.INIT
 
-        elif not laser_on and not enabled and authorized:
-            next_state = StateValues.ENALBED
+        elif not laser_on and authorized:
+            next_state = StateValues.ENABLED
 
         if not self.activity_timer.check():
             # activity timeout
@@ -264,14 +274,40 @@ class Controller:
         if self.state == StateValues.INIT and next_state != StateValues.INIT:
             self.activity_timer.start()
 
-        elif next_state == StateValues.ENABLED:
+        if self.state == StateValues.INIT and next_state == StateValues.ENABLED:
             self.resource.enable()
             self.resource.display("Welcome", self.manager.authorized_rfid)
+
+        if self.state != StateValues.FIRING and next_state == StateValues.FIRING:
+            # set up cut and start tracking time and cost
+            self.activity_timer.reset()
+            self.firing_start = time.time()
+            self.resource.display("Elapsed: 1", "Cost: 0")
+
+        if self.state == next_state and self.state == StateValues.FIRING:
+            # update screen with time / cost
+            self.activity_timer.reset()
+            current_time = min(1, time.time() - self.firing_start)  # in seconds
+            self.display(current_time)
+
+        if self.state == StateValues.FIRING and next_state != StateValues.FIRING:
+            # end cut, report cost, etc,
+            firing_time = min(1, time.time() - self.firing_start)
+            self.display(firing_time)
 
         if DEBUG and self.state != next_state:
             print("{} --> {}".format(self.state, next_state))
 
         self.state = next_state
+
+    def display(self, firing_time):
+        display_cost = round(self.resource.cost(firing_time), 2)
+        mins = int(firing_time / 60)
+        secs = firing_time % 60
+        display_time = "{: 2}:{:02}".format(mins, secs)
+
+        self.resource.display("Time: {}".format(display_time),
+                              "Cost: {:1.2f}".format(display_cost))
 
 
 def main():
