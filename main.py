@@ -173,7 +173,6 @@ class AuthManager:
 
     def update_rfids(self):
         self.authorized_rfids = load_whitelist()
-        self.rfid_update_time = time.time()
 
     def check_rfid(self, rfid):
         report_attempt(rfid, self.authorized)
@@ -184,14 +183,12 @@ class AuthManager:
             self.authorized = True
             self.authorized_rfid = rfid
             print("Logged in: {}".format(rfid))
-            self.authorization_timeout.start()
 
     def logout(self):
         if self.authorized:
             print("Logging out: {}".format(self.authorized_rfid))
         self.authorized = False
         self.authorized_rfid = None
-        self.authorization_timeout.stop()
 
 
 class Controller:
