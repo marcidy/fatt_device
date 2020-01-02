@@ -1,12 +1,21 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch
 import tempfile
-from main import Laser, Controller
+from main import (
+    Laser,
+    Controller,
+    AuthManager,
+)
 
 
 AUTHORIZED_RFIDS = [
     'test1234',
     'test0987']
+
+
+@pytest.fixture(scope='function')
+def authorized_rfids():
+    return AUTHORIZED_RFIDS
 
 
 @pytest.fixture(scope='function')
@@ -56,3 +65,14 @@ def MockControllerState(manager, laser):
     mock_controller.calculate_state = Mock()
 
     return mock_controller
+
+
+@pytest.fixture(scope='function')
+@patch('main.load_whitelist', return_value=AUTHORIZED_RFIDS)
+def Blah(mock_load_whitelist, MockLaser):
+    laser = MockLaser
+    laser.read = Mock(return_value='o1337x0')
+    manager = AuthManager()
+    laser.status()
+    controller = Controller(manager, laser)
+    return controller

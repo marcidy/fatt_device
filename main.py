@@ -208,7 +208,7 @@ class Controller:
 
     def scan(self):
         current_rfid = self.manager.authorized_rfid
-        new_rfid = self.resource.get_rfid()
+        new_rfid = self.resource.rfid()
         self.resource.rfid_flag = '0'
 
         if self.manager.authorized:
@@ -226,6 +226,13 @@ class Controller:
 
     def calculate_state(self):
         new_internal_state = self.emit_state()
+        scanned = new_internal_state['scanned']
+
+        if self.state == StateValues.INIT and scanned:
+            # only scans new fobs when in INIT state
+            self.scan()
+            # overwrite new state taking into account scan result
+            new_internal_state = self.emit_state()
 
         enabled = new_internal_state['enabled']
         laser_on = (new_internal_state['odometer'] >
@@ -235,10 +242,6 @@ class Controller:
 
         # by default, next state = current state
         next_state = self.state
-
-        if self.state == StateValues.INIT and scanned:
-            # only scans new fobs when in INIT state
-            self.scan()
 
         if laser_on and (not authorized or not enabled):
             print("Error - Laser firing without auth or enable flag set")

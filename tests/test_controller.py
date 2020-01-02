@@ -27,10 +27,10 @@ def test_scan_new_card(MockController):
     controller = MockController
     # Indicate new scan, no previous login
     controller.resource.rfid_flag = '1'
-    controller.resource.get_rfid.return_value = '01234567'
+    controller.resource.rfid.return_value = '01234567'
 
     controller.scan()
-    assert controller.resource.get_rfid.called
+    assert controller.resource.rfid.called
     assert controller.resource.rfid_flag == '0'
     assert not controller.manager.logout.called
     assert controller.manager.login.called
@@ -45,7 +45,7 @@ def test_scan_logout(MockController):
 
     # set up new scan
     controller.resource.rfid_flag = '1'
-    controller.resource.get_rfid.return_value = '01234567'
+    controller.resource.rfid.return_value = '01234567'
 
     controller.scan()
     assert controller.manager.logout.called
@@ -61,7 +61,7 @@ def test_scan_switch(MockController):
 
     # set up new scan with different id
     controller.resource.rfid_flag = '1'
-    controller.resource.get_rfid.return_value = 'ABCDEFGH'
+    controller.resource.rfid.return_value = 'ABCDEFGH'
 
     controller.scan()
     assert controller.manager.logout.called
