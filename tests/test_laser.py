@@ -1,5 +1,6 @@
+import os
 import pytest
-from main import Laser
+from main import Laser, LASER_COST
 from unittest.mock import patch, Mock, MagicMock
 import tempfile
 
@@ -87,3 +88,9 @@ def test_laser_response(MockLaser):
     laser.read = Mock(return_value='r00'+test_rfid)
     data = laser.rfid()
     assert data == test_rfid
+
+
+def test_laser_cost(MockLaser):
+    laser = MockLaser
+    test_time = 100
+    assert laser.cost(test_time) == test_time / 60 * LASER_COST

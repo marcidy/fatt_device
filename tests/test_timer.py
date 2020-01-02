@@ -5,10 +5,10 @@ from main import Timer
 def test_timer_init():
     t = Timer(100)
 
-    assert t._Timer__seconds == 100
-    assert not t._Timer__running
-    assert not t._Timer__timeout
-    assert t._Timer__start_time == 0
+    assert t.seconds == 100
+    assert not t.running
+    assert not t.timeout
+    assert t.start_time == 0
     assert t.check()
 
 
@@ -17,13 +17,13 @@ def test_timer():
 
     t.start()
 
-    assert t._Timer__running
-    assert not t._Timer__timeout
-    assert t._Timer__start_time < time.time()
+    assert t.running
+    assert not t.timeout
+    assert t.start_time < time.time()
     assert t.check()
 
     t.stop()
-    assert not t._Timer__running
+    assert not t.running
 
 
 def test_timeout():
@@ -36,10 +36,10 @@ def test_timeout():
         pass
 
     assert not t.check()
-    assert t._Timer__running
+    assert t.running
 
     t.stop()
-    assert not t._Timer__running
+    assert not t.running
 
 
 def test_reset():

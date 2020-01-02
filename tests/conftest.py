@@ -34,6 +34,7 @@ def MockController(manager, laser):
     laser.odometer = 100
     laser.rfid_flag = '0'
     laser.enabled = False
+    laser.cost = Mock(return_value=123.45)
     manager.authorized = False
     manager.authorized_rfid = None
 

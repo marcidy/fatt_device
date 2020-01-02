@@ -8,7 +8,7 @@ def test_controler_init(MockController):
     assert controller
     assert controller.state == StateValues.INIT
     assert not controller.manager.authorized
-    assert not controller.activity_timer._Timer__running
+    assert not controller.activity_timer.running
     print(controller.internal_states)
 
 
@@ -150,7 +150,7 @@ def test_run_init_to_enabled(MockControllerState):
     controller.calculate_state.return_value = StateValues.ENABLED
     controller.run()
     assert controller.resource.enable.called
-    assert controller.activity_timer._Timer__running
+    assert controller.activity_timer.running
 
 
 def test_run_enabled_to_activity_timeout(MockController):
@@ -158,7 +158,7 @@ def test_run_enabled_to_activity_timeout(MockController):
 
     # use a 1s timeout for test
     timeout = 1
-    controller.activity_timer._Timer__seconds = timeout
+    controller.activity_timer.seconds = timeout
 
     # put controller into enabled state when run
     controller.resource.enabled = True
@@ -166,7 +166,7 @@ def test_run_enabled_to_activity_timeout(MockController):
 
     controller.run()
     assert controller.state == StateValues.ENABLED
-    assert controller.activity_timer._Timer__running
+    assert controller.activity_timer.running
     time.sleep(timeout + 1)
     assert not controller.activity_timer.check()
     controller.run()
@@ -191,6 +191,17 @@ def test_run_start_firing_time(MockController):
     # odometer from laser is the same, so it will not update
     controller.run()
     assert controller.state == StateValues.ENABLED
+
+
+def test_firing_steady_state(MockController):
+    controller = MockController
+    controller.resource.enabled = True
+    controller.resource.odometer += 10
+    controller.manager.authorized = True
+    controller.state = StateValues.FIRING
+
+    controller.run()
+    assert controller.state == StateValues.FIRING
 
 
 def test_display(MockController):
