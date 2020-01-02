@@ -9,6 +9,7 @@ from util import (
 
 DEBUG = True
 ACTIVITY_TIMEOUT = 5*60  # 5min activity timeout
+LASER_COST = 0.5
 
 
 class StateValues(Enum):
@@ -23,26 +24,26 @@ class StateValues(Enum):
 class Timer:
 
     def __init__(self, seconds):
-        self.__seconds = seconds
-        self.__running = False
-        self.__timeout = False
-        self.__start_time = 0
+        self.seconds = seconds
+        self.running = False
+        self.timeout = False
+        self.start_time = 0
 
     def start(self):
-        self.__running = True
-        self.__start_time = time.time()
+        self.running = True
+        self.start_time = time.time()
 
     def check(self):
         '''True if timer is disabled or not timed out'''
-        self.__timeout = (not self.__running or
-                          time.time() - self.__start_time < self.__seconds)
-        return self.__timeout
+        self.timeout = (not self.running or
+                        time.time() - self.start_time < self.seconds)
+        return self.timeout
 
     def stop(self):
-        self.__running = False
+        self.running = False
 
     def reset(self):
-        self.__start_time = time.time()
+        self.start_time = time.time()
 
 
 class Laser:
@@ -161,7 +162,6 @@ class Laser:
         self.write('z')
 
     def cost(self, firing_time):
-        LASER_COST = .5  # make env var in device.env
         return firing_time / 60 * LASER_COST
 
 
@@ -283,6 +283,7 @@ class Controller:
             self.activity_timer.reset()
             self.firing_start = time.time()
             self.resource.display("Elapsed: 1", "Cost: 0")
+            print("Firing Start: {}".format(self.firing_start))
 
         if self.state == next_state and self.state == StateValues.FIRING:
             # update screen with time / cost
@@ -292,8 +293,16 @@ class Controller:
 
         if self.state == StateValues.FIRING and next_state != StateValues.FIRING:
             # end cut, report cost, etc,
-            firing_time = min(1, time.time() - self.firing_start)
+            end_time = time.time()
+            firing_time = min(1, end_time - self.firing_start)
             self.display(firing_time)
+            print("Firing End: {}".format(end_time))
+            print("Completed Cut: {},{},{},{},{}".format(
+                self.manager.authorized_rfid,
+                self.firing_start,
+                end_time,
+                firing_time,
+                self.resource.cost(firing_time)))
 
         if DEBUG and self.state != next_state:
             print("{} --> {}".format(self.state, next_state))
