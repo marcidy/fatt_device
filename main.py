@@ -83,7 +83,8 @@ if __name__ == "__main__":
             # Noise from load currently triggers spurious reads on wiegand inputs.
             # More than 30 bits of data on the interface indicates a decent attempted at an RFID.
             if len(bit_string) > 30:
-                scanned_id = str(hex(int(bit_string[:-1], 2))).upper()[3:]
+                scanned_id = "{:08}".format(
+                    hex(int(bit_string[:-1], 2))).upper()[3:]
                 authorized = scanned_id in authorized_rfids
                 print("ID: {} Authorized: {}".format(scanned_id, authorized))
                 report_attempt(scanned_id, authorized)
