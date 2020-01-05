@@ -69,7 +69,7 @@ def MockControllerState(manager, laser):
 
 @pytest.fixture(scope='function')
 @patch('main.load_whitelist', return_value=AUTHORIZED_RFIDS)
-def Blah(mock_load_whitelist, MockLaser):
+def MockControllerLifecycle(mock_load_whitelist, MockLaser):
     laser = MockLaser
     laser.read = Mock(return_value='o1337x0')
     manager = AuthManager()
