@@ -10,6 +10,7 @@ from util import (
 DEBUG = True
 ACTIVITY_TIMEOUT = 10*60  # 10min activity timeout
 LASER_COST = 0.5
+MIN_CUT_TIME = 60  # minumum cut time is 60s.  All laser activity separated by less than 60s is a single cut
 
 
 class StateValues(Enum):
@@ -44,9 +45,9 @@ class Timer:
         :returns: if timer is still active
         :rtype: bool
         '''
-        self.timeout = (not self.running or
-                        time.time() - self.start_time < self.seconds)
-        return self.timeout
+        if self.running:
+            self.timeout = time.time() - self.start_time > self.seconds
+        return self.timeout or not self.running
 
     def stop(self):
         '''Stops the timer, sets self.running to False'''
@@ -55,6 +56,7 @@ class Timer:
     def reset(self):
         '''Resets the start time, resetting the timer without stopping it'''
         self.start_time = time.time()
+        self.timeout = False
 
 
 class Laser:
@@ -103,6 +105,7 @@ class Laser:
         self.status()
 
     def write_raw(self, msg):
+        self.conn.reset_input_buffer()
         self.conn.write(msg)
 
     def write(self, msg):
@@ -117,7 +120,7 @@ class Laser:
         control chars, currently '\n'.  This function should be used rather
         than reading hte Sesrial connection directly for uniformity.
         '''
-        more = self.conn.in_waiting > 0
+        more = True
         data = b''
         while more:
             data += self.read_raw()
@@ -159,13 +162,12 @@ class Laser:
         rfid_flag indicates if a swipe was done'''
 
         self.write('o')
-        time.sleep(.1)
         data = self.read()
         if data:
             try:
                 self.odometer, self.rfid_flag = data[1:].split('x')
-            except Exception:
-                print("Error: status - {}".format(data))
+            except (IndexError, TypeError) as e:
+                print("{}: status - {}".format(e, data))
 
     def rfid(self):
         ''' requests rfid string from Teensy, returns 8 bits only.  For
@@ -221,8 +223,9 @@ class AuthManager:
         :returns: True if rfid is in whitelist, false if not
         :rtype: bool
         '''
-        report_attempt(rfid, self.authorized)
-        return rfid in self.whitelist
+        authorized = rfid in self.whitelist
+        report_attempt(rfid, authorized)
+        return authorized
 
     def login(self, rfid):
         ''' logs a user in by rfid if rfid is valid, logs to system out
@@ -272,6 +275,7 @@ class Controller:
         self.internal_states = self.emit_state()
         self.state = StateValues.INIT
         self.activity_timer = Timer(ACTIVITY_TIMEOUT)
+        self.cut_timer = Timer(MIN_CUT_TIME)
         self.firing_start = 0
         self.firing_end = 0
 
@@ -290,7 +294,7 @@ class Controller:
             self.manager.login(new_rfid)
 
     def emit_state(self):
-        ''' Retrieve state variables from resource and manager '''
+        ''' Retrieve state variables from resource and manager.'''
         return {
             'odometer': self.resource.odometer,
             'enabled': self.resource.enabled,
@@ -318,7 +322,8 @@ class Controller:
                     self.internal_states['odometer'])
         authorized = new_internal_state['authorized']
         scanned = new_internal_state['scanned']
-
+        cutting = self.cut_timer.running and not self.cut_timer.timeout
+        
         # by default, next state = current state
         next_state = self.state
 
@@ -332,8 +337,21 @@ class Controller:
         elif not laser_on and not authorized:
             next_state = StateValues.INIT
 
-        elif not laser_on and authorized:
+        # cut_done adds a filter on the laser signal to keep the state in FIRING for MIN_CUT_TIME
+        # if a cut had been started.  This quiets the logging / reporting since the odometer is
+        # updated on 500ms intervals, and im not really interested in limiting the controller
+        # unecessarily.
+        #
+        # cut_done is a timer. If started, check will be True until it times out.  The timer
+        # is resetted during state transition each time we stop firing.  If the laser stops
+        # firing, and then times out, a new cut will be started by placing the controller
+        # in the ENABLED state.
+        elif not laser_on and authorized and not cutting:
             next_state = StateValues.ENABLED
+
+        # hold the laser in firing until we get a cutting timeout.
+        elif self.state == StateValues.FIRING and not laser_on and authorized and cutting:
+            next_state = StateValues.FIRING
 
         if not self.activity_timer.check():
             # activity timeout
@@ -361,6 +379,20 @@ class Controller:
         self.resource.status()
         next_state = self.calculate_state()
 
+        # Base case return to INIT from a logged in state.
+        if self.state != StateValues.INIT and next_state == StateValues.INIT:
+            # Cut timer time out
+            end_time = time.time()
+            firing_time = min(1, end_time - self.firing_start)
+            self.display(firing_time)
+            print("Firing End: {}".format(end_time))
+            print("Completed Cut: {},{},{},{},{}".format(
+                self.manager.authorized_rfid,
+                self.firing_start,
+                end_time,
+                firing_time,
+                self.resource.cost(firing_time)))
+
         # The initial state means teh resource is disabled and the devices is
         # not authorized.
         # The activity timer is also disabled.
@@ -369,6 +401,8 @@ class Controller:
             self.manager.logout()
             self.activity_timer.stop()
             self.activity_timer.reset()
+            self.cut_timer.stop()
+            self.cut_timer.reset()
             self.resource.display("Please swipe", "fob to continue")
 
         # If we are transitioning from the INIT state, beging the activity
@@ -382,13 +416,19 @@ class Controller:
             self.resource.enable()
             self.resource.display("Welcome", self.manager.authorized_rfid)
 
+        # If we are enabled, check the cut time.  This will set up the processing
+        # of a timeout next time state is checked.  If the timer isn't running, check doesn't
+        # do anything.
+        if self.state == next_state and next_state == StateValues.ENABLED:
+            self.cut_timer.check()
+
         # If we are transitioning to FIRING from not firing, update the
         # activity timer, and begin tracking firing time
         if self.state != StateValues.FIRING and next_state == StateValues.FIRING:
             # set up cut and start tracking time and cost
             self.activity_timer.reset()
             self.firing_start = time.time()
-            self.resource.display("Elapsed: 1", "Cost: 0")
+            self.resource.display("Time: 1", "Cost: 0")
             print("Firing Start: {}".format(self.firing_start))
 
         # if we are currently firing and we're still firing, update the timer
@@ -400,17 +440,14 @@ class Controller:
 
         # If we are done firing, stop the timer, and report the cut
         if self.state == StateValues.FIRING and next_state != StateValues.FIRING:
-            # end cut, report cost, etc,
-            end_time = time.time()
-            firing_time = min(1, end_time - self.firing_start)
-            self.display(firing_time)
-            print("Firing End: {}".format(end_time))
-            print("Completed Cut: {},{},{},{},{}".format(
-                self.manager.authorized_rfid,
-                self.firing_start,
-                end_time,
-                firing_time,
-                self.resource.cost(firing_time)))
+            if not self.cut_timer.running:
+                self.cut_timer.start()
+                if DEBUG:
+                    print("Starting cut timer")
+            elif self.cut_timer.check():
+                self.cut_timer.reset()
+                if DEBUG:
+                    print("Resetting cut timer")
 
         if DEBUG and self.state != next_state:
             print("{} --> {}".format(self.state, next_state))

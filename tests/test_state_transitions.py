@@ -72,7 +72,7 @@ def test_controller_switch_user(mock_report_attempt,
     serial_reads = ['o1000x1',
                     'r'+test_id1,
                     'o1100x0',
-                    'o1100x0'
+                    'o1100x0',
                     'o1100x1',
                     'r'+test_id2,
                     ]
@@ -111,6 +111,7 @@ def test_controller_scan_while_firing(mock_report_attempt,
                     'o1100x0',
                     'o1200x1',
                     'o1300x0',
+                    'o1400x0',
                     'r'+test_id,
                     ]
 

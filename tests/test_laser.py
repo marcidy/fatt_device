@@ -38,6 +38,7 @@ def test_laser_interface(MockLaser):
     laser.rfid()
     assert laser.write.called_with("r")
 
+    laser.read = Mock(return_value='o1000x1')
     laser.status()
     assert laser.write.called_with("o")
 
