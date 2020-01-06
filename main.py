@@ -47,7 +47,7 @@ class Timer:
         '''
         if self.running:
             self.timeout = time.time() - self.start_time > self.seconds
-        return self.timeout or not self.running
+        return not self.timeout or not self.running
 
     def stop(self):
         '''Stops the timer, sets self.running to False'''
@@ -101,7 +101,9 @@ class Laser:
         self.reset_usb()
         time.sleep(1)
         self.conn = Serial(port, baudrate)
-        self.disable()  # Do I need to send disable on service start?
+        self.disable()
+        self.odometer = '0'
+        self.rfid_flag = '0'
         self.status()
 
     def write_raw(self, msg):
@@ -196,6 +198,10 @@ class Laser:
     def cost(self, firing_time):
         return firing_time / 60 * LASER_COST
 
+    def reset(self):
+        self.disable()
+        self.reset_cut_time()
+
 
 class AuthManager:
     ''' Abstracts authentication state.  Warehouses rfid updating,
@@ -272,12 +278,12 @@ class Controller:
     def __init__(self, manager, resource):
         self.manager = manager
         self.resource = resource
-        self.internal_states = self.emit_state()
-        self.state = StateValues.INIT
+        self.resource.reset()
         self.activity_timer = Timer(ACTIVITY_TIMEOUT)
-        self.cut_timer = Timer(MIN_CUT_TIME)
+        self.state = StateValues.INIT
         self.firing_start = 0
         self.firing_end = 0
+        self.internal_states = self.emit_state()
 
     def scan(self):
         ''' retrieves an rfid from the resource and decides what to do with it
@@ -299,7 +305,9 @@ class Controller:
             'odometer': self.resource.odometer,
             'enabled': self.resource.enabled,
             'authorized': self.manager.authorized,
-            'scanned': self.resource.rfid_flag == '1'}
+            'scanned': self.resource.rfid_flag == '1',
+            'activity': self.activity_timer.check(),
+        }
 
     def calculate_state(self):
         ''' From current state information, the next state if calculated.  This
@@ -310,7 +318,7 @@ class Controller:
         new_internal_state = self.emit_state()
         scanned = new_internal_state['scanned']
 
-        # only scans new fobs when in INIT state
+        # only scans new fobs when in INIT or ENABLED state
         if scanned and self.state in [StateValues.INIT, StateValues.ENABLED]:
             self.scan()
             # overwrite new state taking into account scan result
@@ -322,8 +330,8 @@ class Controller:
                     self.internal_states['odometer'])
         authorized = new_internal_state['authorized']
         scanned = new_internal_state['scanned']
-        cutting = self.cut_timer.running and not self.cut_timer.timeout
-        
+        activity = new_internal_state['activity']
+
         # by default, next state = current state
         next_state = self.state
 
@@ -337,23 +345,19 @@ class Controller:
         elif not laser_on and not authorized:
             next_state = StateValues.INIT
 
-        # cut_done adds a filter on the laser signal to keep the state in FIRING for MIN_CUT_TIME
-        # if a cut had been started.  This quiets the logging / reporting since the odometer is
-        # updated on 500ms intervals, and im not really interested in limiting the controller
-        # unecessarily.
+        # cut_done adds a filter on the laser signal to keep the state in
+        # FIRING for MIN_CUT_TIME if a cut had been started.  This quiets the
+        # logging / reporting since the odometer is updated on 500ms intervals,
+        # and im not really interested in limiting the controller unecessarily.
         #
-        # cut_done is a timer. If started, check will be True until it times out.  The timer
-        # is resetted during state transition each time we stop firing.  If the laser stops
-        # firing, and then times out, a new cut will be started by placing the controller
-        # in the ENABLED state.
-        elif not laser_on and authorized and not cutting:
+        # cut_done is a timer. If started, check will be True until it times
+        # out.  The timer is resetted during state transition each time we
+        # stop firing.  If the laser stops firing, and then times out, a new
+        # cut will be started by placing the controller in the ENABLED state.
+        elif not laser_on and authorized:
             next_state = StateValues.ENABLED
 
-        # hold the laser in firing until we get a cutting timeout.
-        elif self.state == StateValues.FIRING and not laser_on and authorized and cutting:
-            next_state = StateValues.FIRING
-
-        if not self.activity_timer.check():
+        if not activity:
             # activity timeout
             next_state = StateValues.INIT
 
@@ -382,8 +386,8 @@ class Controller:
         # Base case return to INIT from a logged in state.
         if self.state != StateValues.INIT and next_state == StateValues.INIT:
             # Cut timer time out
-            end_time = time.time()
-            firing_time = min(1, end_time - self.firing_start)
+            end_time = int(self.resource.odometer)
+            firing_time = min(1, end_time - int(self.firing_start))
             self.display(firing_time)
             print("Firing End: {}".format(end_time))
             print("Completed Cut: {},{},{},{},{}".format(
@@ -397,12 +401,10 @@ class Controller:
         # not authorized.
         # The activity timer is also disabled.
         if next_state == StateValues.INIT:
-            self.resource.disable()
+            self.resource.reset()
             self.manager.logout()
             self.activity_timer.stop()
             self.activity_timer.reset()
-            self.cut_timer.stop()
-            self.cut_timer.reset()
             self.resource.display("Please swipe", "fob to continue")
 
         # If we are transitioning from the INIT state, beging the activity
@@ -415,39 +417,17 @@ class Controller:
         if self.state == StateValues.INIT and next_state == StateValues.ENABLED:
             self.resource.enable()
             self.resource.display("Welcome", self.manager.authorized_rfid)
+            self.firing_start = self.resource.odometer
 
-        # If we are enabled, check the cut time.  This will set up the processing
-        # of a timeout next time state is checked.  If the timer isn't running, check doesn't
-        # do anything.
-        if self.state == next_state and next_state == StateValues.ENABLED:
-            self.cut_timer.check()
-
-        # If we are transitioning to FIRING from not firing, update the
-        # activity timer, and begin tracking firing time
-        if self.state != StateValues.FIRING and next_state == StateValues.FIRING:
-            # set up cut and start tracking time and cost
+        # If we are FIRING, update the activity timer
+        if next_state == StateValues.FIRING:
             self.activity_timer.reset()
-            self.firing_start = time.time()
-            self.resource.display("Time: 1", "Cost: 0")
-            print("Firing Start: {}".format(self.firing_start))
 
-        # if we are currently firing and we're still firing, update the timer
-        if self.state == next_state and self.state == StateValues.FIRING:
+        # maintain the display
+        if next_state in [StateValues.ENABLED, StateValues.FIRING]:
             # update screen with time / cost
-            self.activity_timer.reset()
-            current_time = min(1, time.time() - self.firing_start)  # in seconds
+            current_time = min(1, int(self.resource.odometer) - int(self.firing_start))
             self.display(current_time)
-
-        # If we are done firing, stop the timer, and report the cut
-        if self.state == StateValues.FIRING and next_state != StateValues.FIRING:
-            if not self.cut_timer.running:
-                self.cut_timer.start()
-                if DEBUG:
-                    print("Starting cut timer")
-            elif self.cut_timer.check():
-                self.cut_timer.reset()
-                if DEBUG:
-                    print("Resetting cut timer")
 
         if DEBUG and self.state != next_state:
             print("{} --> {}".format(self.state, next_state))
