@@ -7,10 +7,9 @@ from util import (
 )
 
 
-DEBUG = True
+DEBUG = False
 ACTIVITY_TIMEOUT = 10*60  # 10min activity timeout
 LASER_COST = 0.5
-MIN_CUT_TIME = 60  # minumum cut time is 60s.  All laser activity separated by less than 60s is a single cut
 
 
 class StateValues(Enum):
@@ -210,7 +209,6 @@ class AuthManager:
 
     def __init__(self):
         print("Laser service starting....")
-        print(time.time())
         self.rfid_update_time = 0
         self.authorized_rfid = None
         self.update_rfids()
@@ -329,7 +327,6 @@ class Controller:
         laser_on = (new_internal_state['odometer'] >
                     self.internal_states['odometer'])
         authorized = new_internal_state['authorized']
-        scanned = new_internal_state['scanned']
         activity = new_internal_state['activity']
 
         # by default, next state = current state
@@ -345,15 +342,6 @@ class Controller:
         elif not laser_on and not authorized:
             next_state = StateValues.INIT
 
-        # cut_done adds a filter on the laser signal to keep the state in
-        # FIRING for MIN_CUT_TIME if a cut had been started.  This quiets the
-        # logging / reporting since the odometer is updated on 500ms intervals,
-        # and im not really interested in limiting the controller unecessarily.
-        #
-        # cut_done is a timer. If started, check will be True until it times
-        # out.  The timer is resetted during state transition each time we
-        # stop firing.  If the laser stops firing, and then times out, a new
-        # cut will be started by placing the controller in the ENABLED state.
         elif not laser_on and authorized:
             next_state = StateValues.ENABLED
 
@@ -387,9 +375,8 @@ class Controller:
         if self.state != StateValues.INIT and next_state == StateValues.INIT:
             # Cut timer time out
             end_time = int(self.resource.odometer)
-            firing_time = min(1, end_time - int(self.firing_start))
+            firing_time = max(1, end_time - int(self.firing_start))
             self.display(firing_time)
-            print("Firing End: {}".format(end_time))
             print("Completed Cut: {},{},{},{},{}".format(
                 self.manager.authorized_rfid,
                 self.firing_start,
@@ -405,7 +392,7 @@ class Controller:
             self.manager.logout()
             self.activity_timer.stop()
             self.activity_timer.reset()
-            self.resource.display("Please swipe", "fob to continue")
+            self.resource.display("Please swipe", "fob to login")
 
         # If we are transitioning from the INIT state, beging the activity
         # timer.
@@ -426,7 +413,7 @@ class Controller:
         # maintain the display
         if next_state in [StateValues.ENABLED, StateValues.FIRING]:
             # update screen with time / cost
-            current_time = min(1, int(self.resource.odometer) - int(self.firing_start))
+            current_time = max(1, int(self.resource.odometer) - int(self.firing_start))
             self.display(current_time)
 
         if DEBUG and self.state != next_state:
@@ -445,10 +432,10 @@ class Controller:
         display_cost = round(self.resource.cost(firing_time), 2)
         mins = int(firing_time / 60)
         secs = firing_time % 60
-        display_time = "{: 2}:{:02}".format(mins, secs)
+        display_time = "{: 1}:{:02}".format(mins, secs)
 
-        self.resource.display("Time: {}".format(display_time),
-                              "Cost: {:1.2f}".format(display_cost))
+        self.resource.display("Time:  {}".format(display_time),
+                              "Cost: ${:1.2f}".format(display_cost))
 
 
 def main():
