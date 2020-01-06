@@ -58,6 +58,7 @@ def MockControllerState(manager, laser):
     laser.odometer = 1000
     laser.rfid_flag = '0'
     laser.enabled = False
+    laser.cost = Mock(return_value=123.45)
     manager.authorized = False
     manager.authorized_rfid = None
 
@@ -71,7 +72,6 @@ def MockControllerState(manager, laser):
 @patch('main.load_whitelist', return_value=AUTHORIZED_RFIDS)
 def MockControllerLifecycle(mock_load_whitelist, MockLaser):
     laser = MockLaser
-    laser.read = Mock(return_value='o1337x0')
     manager = AuthManager()
     laser.status()
     controller = Controller(manager, laser)

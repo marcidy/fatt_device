@@ -1,3 +1,4 @@
+import pytest
 import time
 from unittest.mock import Mock
 from main import StateValues
@@ -137,7 +138,7 @@ def test_run(MockController):
     controller.calculate_state = Mock(return_value=StateValues.INIT)
 
     controller.run()
-    assert controller.resource.disable.called
+    assert controller.resource.reset.called
     assert controller.manager.logout.called
 
 
@@ -171,7 +172,7 @@ def test_run_enabled_to_activity_timeout(MockController):
     assert not controller.activity_timer.check()
     controller.run()
     assert controller.state == StateValues.INIT
-    assert controller.resource.disable.called
+    assert controller.resource.reset.called
     assert controller.manager.logout.called
 
 
@@ -179,9 +180,11 @@ def test_run_start_firing_time(MockController):
     controller = MockController
 
     controller.resource.enabled = True
+    controller.manager.authorized = True
+    controller.run()
+
     controller.resource.odometer += 10
     controller.resource.cost.return_value = 123.45
-    controller.manager.authorized = True
     controller.run()
 
     assert controller.firing_start > 0
@@ -204,6 +207,7 @@ def test_firing_steady_state(MockController):
     assert controller.state == StateValues.FIRING
 
 
+# @pytest.mark.skip(reason="long running")
 def test_display(MockController):
     controller = MockController
 
