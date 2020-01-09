@@ -291,11 +291,17 @@ class Controller:
         new_rfid = self.resource.rfid()
         self.resource.rfid_flag = '0'
 
+        # if we're logged in, log out
         if self.manager.authorized:
             self.manager.logout()
+            self.resource.display("Logging out...", " ")
+            time.sleep(1)
 
-        if new_rfid != current_rfid:
+        # if we're not logged in, log in
+        else:
             self.manager.login(new_rfid)
+            self.resource.display("Logging in...", " ")
+            time.sleep(1)
 
     def emit_state(self):
         ''' Retrieve state variables from resource and manager.'''
@@ -369,16 +375,17 @@ class Controller:
 
         '''
         self.resource.status()
+        current_cutting_rfid = self.manager.authorized_rfid  # grab RFID before logout wipes it
         next_state = self.calculate_state()
 
         # Base case return to INIT from a logged in state.
         if self.state != StateValues.INIT and next_state == StateValues.INIT:
             # Cut timer time out
             end_time = int(self.resource.odometer)
-            firing_time = max(1, end_time - int(self.firing_start))
+            firing_time = max(0, end_time - int(self.firing_start))
             self.display(firing_time)
             print("Completed Cut: {},{},{},{},{}".format(
-                self.manager.authorized_rfid,
+                current_cutting_rfid,
                 self.firing_start,
                 end_time,
                 firing_time,
@@ -413,7 +420,7 @@ class Controller:
         # maintain the display
         if next_state in [StateValues.ENABLED, StateValues.FIRING]:
             # update screen with time / cost
-            current_time = max(1, int(self.resource.odometer) - int(self.firing_start))
+            current_time = max(0, int(self.resource.odometer) - int(self.firing_start))
             self.display(current_time)
 
         if DEBUG and self.state != next_state:
@@ -434,8 +441,8 @@ class Controller:
         secs = firing_time % 60
         display_time = "{: 1}:{:02}".format(mins, secs)
 
-        self.resource.display("Time:  {}".format(display_time),
-                              "Cost: ${:1.2f}".format(display_cost))
+        self.resource.display("Time:     {}".format(display_time),
+                              "Cost:     ${:1.2f}".format(display_cost))
 
 
 def main():
