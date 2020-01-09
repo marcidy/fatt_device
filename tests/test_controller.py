@@ -53,22 +53,6 @@ def test_scan_logout(MockController):
     assert not controller.manager.login.called
 
 
-def test_scan_switch(MockController):
-    controller = MockController
-
-    # log a user in
-    controller.manager.authorized = True
-    controller.manager.authorized_rfid = '01234567'
-
-    # set up new scan with different id
-    controller.resource.rfid_flag = '1'
-    controller.resource.rfid.return_value = 'ABCDEFGH'
-
-    controller.scan()
-    assert controller.manager.logout.called
-    assert controller.manager.login.called
-
-
 def test_emit_state(MockController):
     controller = MockController
 

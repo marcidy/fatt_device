@@ -80,6 +80,8 @@ def test_lifecycle_switch_user(mock_report_attempt,
                     'o1100x0',
                     'o1100x1',
                     'r'+test_id2,
+                    'o1100x1',
+                    'r'+test_id2,
                     ]
 
     controller.resource.read.side_effect = serial_reads
@@ -95,6 +97,9 @@ def test_lifecycle_switch_user(mock_report_attempt,
 
     controller.run()
     assert controller.state == StateValues.ENABLED
+
+    controller.run()
+    assert controller.state == StateValues.INIT
 
     controller.run()
     assert controller.state == StateValues.ENABLED
