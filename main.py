@@ -16,6 +16,8 @@ locked = True  # is the door currently locked?
 lock_opened_time = 0  # when did we unlock the door?
 lock_open_delay_s = 1  # open delay in seconds
 
+whitelist_timeout_s = 5*60  # check whitelist every 5 min
+whitelist_update_time = 0  # time of last update
 DEBUG = False
 
 
@@ -96,5 +98,9 @@ if __name__ == "__main__":
 
         if (not locked and (time.time() - lock_opened_time) > lock_open_delay_s):
             lock_door()
+
+        if (time.time() - whitelist_update_time) > whitelist_timeout_s:
+            whitelist_update_time = time.time()  # reset time of last update
+            authorized_rfids = load_whitelist()
 
         time.sleep(.001)
