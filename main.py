@@ -16,6 +16,8 @@ locked = True  # is the door currently locked?
 lock_opened_time = 0  # when did we unlock the door?
 lock_open_delay_s = 1  # open delay in seconds
 
+whitelist_timeout_s = 5*60  # check whitelist every 5 min
+whitelist_update_time = 0  # time of last update
 DEBUG = False
 
 
@@ -83,8 +85,7 @@ if __name__ == "__main__":
             # Noise from load currently triggers spurious reads on wiegand inputs.
             # More than 30 bits of data on the interface indicates a decent attempted at an RFID.
             if len(bit_string) > 30:
-                scanned_id = "{:0>8}".format(
-                    hex(int(bit_string[:-1], 2))).upper()[3:]
+                scanned_id = "{:08X}".format(int(bit_string[1:-1], 2))
                 authorized = scanned_id in authorized_rfids
                 print("ID: {} Authorized: {}".format(scanned_id, authorized))
                 report_attempt(scanned_id, authorized)
@@ -97,5 +98,9 @@ if __name__ == "__main__":
 
         if (not locked and (time.time() - lock_opened_time) > lock_open_delay_s):
             lock_door()
+
+        if (time.time() - whitelist_update_time) > whitelist_timeout_s:
+            whitelist_update_time = time.time()  # reset time of last update
+            authorized_rfids = load_whitelist()
 
         time.sleep(.001)
