@@ -88,7 +88,10 @@ if __name__ == "__main__":
                 scanned_id = "{:08X}".format(int(bit_string[1:-1], 2))
                 authorized = scanned_id in authorized_rfids
                 print("ID: {} Authorized: {}".format(scanned_id, authorized))
-                report_attempt(scanned_id, authorized)
+                try:
+                    report_attempt(scanned_id, authorized)
+                except Exception:
+                    print("Logging Failed: ID - {} - Auth - {}".format(scanned_id, authorized))
 
             reset_scan()
 
