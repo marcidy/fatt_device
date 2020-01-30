@@ -1,4 +1,4 @@
-import pytest
+from unittest.mock import patch
 import time
 from unittest.mock import Mock
 from main import StateValues
@@ -138,7 +138,8 @@ def test_run_init_to_enabled(MockControllerState):
     assert controller.activity_timer.running
 
 
-def test_run_enabled_to_activity_timeout(MockController):
+@patch('main.requests.post')
+def test_run_enabled_to_activity_timeout(post, MockController):
     controller = MockController
 
     # use a 1s timeout for test

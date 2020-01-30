@@ -15,8 +15,10 @@ def test_lifecycle_config(mock_report_attempt,
     assert controller.state == StateValues.INIT
 
 
+@patch('main.requests.post')
 @patch('main.report_attempt')
-def test_lifecycle_basic(mock_report_attempt,
+def test_lifecycle_basic(requests_post,
+                         mock_report_attempt,
                          MockControllerLifecycle,
                          authorized_rfids):
     ''' id logs in, laser fires, and id logs out '''
@@ -56,8 +58,10 @@ def test_lifecycle_basic(mock_report_attempt,
     assert controller.state == StateValues.INIT
 
 
+@patch('main.requests.post')
 @patch('main.report_attempt')
-def test_lifecycle_switch_user(mock_report_attempt,
+def test_lifecycle_switch_user(requests_post,
+                               mock_report_attempt,
                                MockControllerLifecycle,
                                authorized_rfids):
     controller = MockControllerLifecycle
@@ -105,8 +109,10 @@ def test_lifecycle_switch_user(mock_report_attempt,
     assert controller.state == StateValues.ENABLED
 
 
+@patch('main.requests.post')
 @patch('main.report_attempt')
-def test_lifecycle_scan_while_firing(mock_report_attempt,
+def test_lifecycle_scan_while_firing(requests_post,
+                                     mock_report_attempt,
                                      MockControllerLifecycle,
                                      authorized_rfids):
     ''' Test that an ID scanned while the laser is firing is ignored '''
@@ -154,8 +160,10 @@ def test_lifecycle_scan_while_firing(mock_report_attempt,
     assert controller.manager.authorized_rfid == test_id
 
 
+@patch('main.requests.post')
 @patch('main.report_attempt')
-def test_lifecycle_cut_timer(mock_report_attempt,
+def test_lifecycle_cut_timer(requests_post,
+                             mock_report_attempt,
                              MockControllerLifecycle,
                              authorized_rfids):
     controller = MockControllerLifecycle

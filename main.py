@@ -1,3 +1,4 @@
+import os
 import time
 from enum import Enum
 from serial import Serial
@@ -5,11 +6,46 @@ from util import (
     report_attempt,
     load_whitelist,
 )
+import requests
 
 
 DEBUG = False
 ACTIVITY_TIMEOUT = 10*60  # 10min activity timeout
 LASER_COST = 0.5
+
+
+def report_laser_fees(cred, start_time, end_time, firing_time, cost):
+    ''' Report the completed cut fees to GC.  Parts of this could be
+    abstracted out with report attempt, but for now this works, and is specific
+    to the laser.
+
+    :param cred: Credential
+    :type cred: string
+    :param start_time: Start marker of the cut, in seconds
+    :type start_time: int
+    :param end_time: End marker of the cut, in seconds
+    :type end_time: int
+    :param firing_time: cut interval length, in seconds
+    :type firing_time: int
+    :param cost: Cost of the cut
+    :type cost: float
+    '''
+
+    GC_ASSET_TOKEN = os.environ['AMTGC_ASSET_TOKEN']
+    REPORTING_URL = "http://159.89.130.100:8000/laserfees/"
+
+    data = {
+        'credential': cred,
+        'start_time': start_time,
+        'end_time': end_time,
+        'firing_time': firing_time,
+        'cost': cost,
+    }
+
+    headers = {'Authorization': 'Token {}'.format(GC_ASSET_TOKEN)}
+    resp = requests.post(REPORTING_URL, data, headers=headers)
+    print(resp.content)
+    return resp
 
 
 class StateValues(Enum):
@@ -287,7 +323,6 @@ class Controller:
         ''' retrieves an rfid from the resource and decides what to do with it
         based on the state of the auth manager'''
 
-        current_rfid = self.manager.authorized_rfid
         new_rfid = self.resource.rfid()
         self.resource.rfid_flag = '0'
 
@@ -384,12 +419,20 @@ class Controller:
             end_time = int(self.resource.odometer)
             firing_time = max(0, end_time - int(self.firing_start))
             self.display(firing_time)
+            cost = self.resource.cost(firing_time)
+
             print("Completed Cut: {},{},{},{},{}".format(
                 current_cutting_rfid,
                 self.firing_start,
                 end_time,
                 firing_time,
-                self.resource.cost(firing_time)))
+                cost))
+
+            report_laser_fees(current_cutting_rfid,
+                              self.firing_start,
+                              end_time,
+                              firing_time,
+                              cost)
 
         # The initial state means teh resource is disabled and the devices is
         # not authorized.
